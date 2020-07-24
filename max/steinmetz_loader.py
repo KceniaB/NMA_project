@@ -9,7 +9,8 @@ def get_good_cells(fdirpath):
     # location in brain of each neuron
     brain_loc = os.path.join(fdirpath, "channels.brainLocation.tsv")
 
-    good_cells = (np.load(os.path.join(fdirpath, "clusters._phy_annotation.npy")) >= 2 ).flatten()
+    phy_label = np.load(os.path.join(fdirpath, "clusters._phy_annotation.npy")).flatten()
+    phy_label_good = (phy_label >= 2)
     clust_channel = np.load(os.path.join(fdirpath, "clusters.peakChannel.npy")).astype(int) - 1
     br = []
     with open(brain_loc, 'r') as tsv:
@@ -20,11 +21,10 @@ def get_good_cells(fdirpath):
                 br.append(row[-1])
             k+=1
     br = np.array(br)
-    good_cells = np.logical_and(good_cells, clust_channel.flatten()<len(br))
+    good_cells = np.logical_and(phy_label_good, clust_channel.flatten()<len(br))
     brain_region = br[clust_channel[:,0]]
 
-
-    return good_cells, brain_region, br
+    return good_cells, brain_region, br, phy_label
 
 
 def get_waves(fdirpath):
@@ -120,6 +120,7 @@ def get_passive(fdirpath):
     vis_right_p = np.load(os.path.join(fdirpath, "passiveVisual.contrastRight.npy")).flatten()
     vis_left_p = np.load(os.path.join(fdirpath, "passiveVisual.contrastLeft.npy")).flatten()
     vis_times_p = np.load(os.path.join(fdirpath,   "passiveVisual.times.npy"))
+
     return vis_times_p, vis_right_p, vis_left_p
 
 
