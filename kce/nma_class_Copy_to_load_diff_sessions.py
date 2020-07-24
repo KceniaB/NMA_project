@@ -12,19 +12,15 @@ from sklearn.decomposition import TruncatedSVD
 
 
 """
-Class for all the functions from Samuel, Kcenia and Max NMA Projekt
+Class for all the functions from Samual, Kcenia and Max NMA Projekt
 
-
+- put in finalized functions - production ready
+- pay close attantion on documentation and help files
 """
 
 
 
 class NMA_project():
-    """[class to load each session and cleanup data]
-
-    Returns:
-        [type]: [description]
-    """    
     def __init__(self, main_folder, dt=1/1000, dT=2.5, T0=0.5):
         self.dt = dt
         self.dT = dT
@@ -43,81 +39,48 @@ class NMA_project():
 
     # load session from given sesion folder
     def load_session(self, folder):
-        """[load important information for each given session]
+        """
+        load all files from given folder to dict
+        return: (session::dictionary with key as filenames,
+                    important dict element: 
+                        clusters_df::dataframe with all clustes and infos about clusters and spikes for clusters,
+                        trials_df:: dataframe with all trials and events of trials
+                 )
+        """
+        # load session files ===========================================
+        from os import listdir
+        from os.path import isfile, join
+        files = [f for f in listdir(folder) if isfile(join(folder, f))]
+        names = ['_'.join(f.split('.')[:-1]) for f in files]
+        session = dict()
+        for (file_, name_) in zip(files, names):
+            if file_.split('.')[-1] == 'npy':
+                session[name_] = np.load(folder+'/'+file_)
+            if file_.split('.')[-1] == 'tsv':
+                session[name_] = pd.read_table(folder+'/'+file_)
 
-        Args:
-            folder ([string]): [path to folder with session files to load]
-
-        Returns:
-           session [dict]: [dictionary with keys:
-                    folder: folder of session
-                    spikes_df: dataframe with all spikes and cluster belonging to
-                    clusters_df: infromation about neurons with spikes
-                    trials_df: infromation about trials, times, and wheel movement
-                    clusters = good_cells
-                    brain_area = brain_regions
-                    spk: binned spikes for each neuron and each trial
-                    wheel: wheel movement per trial
-                    pupil: pupil diameter per time bin
-                    response = response
-                    contrast_right: vis_right
-                    contrast_left: vis_left
-                    response_time: rsp
-                    feedback_time: feedback
-                    feedback_type: feedback_type  
-                    gocue: gocue
-                    mouse_name
-                    date_exp
-                    trough_to_peak
-                    waveform_w
-                    waveform_u
-                    bin_size
-                    stim_onset
-                    spks_passive: binned spikes for each neuron and each passive trial
-                    wheel_passive: wheel movement per passive trial
-                    pupil_passive: 
-                    contrast_right_passive: 
-                    contrast_left_passive: ]
-        """        
-        # load session files into dictionary ===========================================
-
-        ## load session files ===========================================
-        #from os import listdir
-        #from os.path import isfile, join
-        #files = [f for f in listdir(folder) if isfile(join(folder, f))]
-        #files = [f for f in files if f[:2]!='._'] #Samuel added this to deal with weird bug
-        #names = ['_'.join(f.split('.')[:-1]) for f in files]
-        #session = dict()
-        #for (file_, name_) in zip(files, names):
-        #    if file_.split('.')[-1] == 'npy':
-        #        session[name_] = np.load(join(folder,file_))
-        #    if file_.split('.')[-1] == 'tsv':
-        #        session[name_] = pd.read_table(join(folder,file_))
-
-        # Load Pachitariu Session Data ===========================================================================
+        # Load Pitarius Session Data ===========================================================================
         # good cells and brain regions
-        good_cells, brain_region, br, phy_label = self.get_good_cells(folder)
-        # get all spikes
-        spk_spikes, spk_clusters = self.get_all_spikes(folder)
+        good_cells, brain_region, br = self.get_good_cells(folder)
         # event types
-        response, vis_right, vis_left, feedback_type, included_tr, rep_nrs = self.get_event_types(folder)
+        response, vis_right, vis_left, feedback_type = self.get_event_types(folder)
         # event timing
-        response_times, visual_times, gocue_times, feedback_times, interval_times, rsp, feedback, gocue, interval = self.get_event_times(folder)   
+        response_times, visual_times, rsp, gocue, feedback_time = self.get_event_times(folder)   
         # get passive trials
-        vis_times_p, vis_right_p, vis_left_p, gocue_p = self.get_passive(folder)
+        vis_times_p, vis_right_p, vis_left_p = self.get_passive(folder)
         visual_times = np.vstack((visual_times, vis_times_p))
         vis_right = np.hstack((vis_right, vis_right_p))
         vis_left  = np.hstack((vis_left, vis_left_p))
-        # get spikes and clusters of spikes
-        spikes, sclust    = self.get_spikes(folder)
         # wheel traces
+        stimes, sclust    = self.get_spikes(folder)
+        # only care about spikes during trials
         wheel, wheel_times = self.get_wheel(folder)
         # load the pupil
         pup, xy, pup_times = self.get_pup(folder)
         # load the LFP
         #L, ba_lfp = self.get_LFP(folder, br, visual_times-T0, dT, dt, T0)
         # trials loader
-        S  = self.psth(spikes, sclust,   visual_times-self.T0, self.dT, self.dt)
+        S  = self.psth(stimes, sclust,   visual_times-self.T0, self.dT, self.dt)
         # wheel trials
         W = self.wpsth(wheel, wheel_times,   visual_times-self.T0, self.dT, self.dt)
         # pupil loader
@@ -126,108 +89,89 @@ class NMA_project():
         twav, w, u = self.get_waves(folder)
         good_cells = good_cells * (np.mean(S, axis=(1,2))>0)
         S  = S[good_cells].astype('int8') 
-        
-        # put all the variables into dictionary
-        session = dict()
-        # _p mens for passif trials
-        # number of active trials
-        ntrials = len(response)
-        session['folder'] = folder
-        session['clusters'] = good_cells
-        session['brain_area'] = brain_region[good_cells]
-        session['spk']=S[:, :ntrials, :]
-        session['wheel'] = W[np.newaxis, :ntrials, :]
-        session['pupil'] = P[:, :ntrials, :]
-        session['response'] = response
-        session['contrast_right'] = vis_right[:ntrials]
-        session['contrast_left'] = vis_left[:ntrials]
-        session['response_time'] = rsp
-        session['feedback_time'] = feedback
-        session['feedback_type'] = feedback_type  
-        session['gocue'] = gocue
-        session['mouse_name'] = folder.split('\\')[1].split('_')[0]
-        session['date_exp'] = folder.split('\\')[1].split('_')[1]
-        session['trough_to_peak'] = twav[good_cells].flatten()
-        session['waveform_w'] = w[good_cells].astype('float32')
-        session['waveform_u'] = u[good_cells].astype('float32')
-        session['bin_size'] = self.dt
-        session['stim_onset'] = self.T0
-        session['spks_passive'] = S[:, ntrials:, :]
-        session['wheel_passive'] = W[np.newaxis, ntrials:, :]
-        session['pupil_passive'] = P[:, ntrials:, :]
-        #session['lfp_passive'] = L[:, ntrials:, :]
-        session['contrast_right_passive'] = vis_right[ntrials:]
-        session['contrast_left_passive'] = vis_left[ntrials:]
     
         # pars probe infos ============================================================================
-            # # load channel brain location infos
-            # brain = pd.DataFrame(session['channels_brainLocation'])
-            # # load channel probes
-            # site = pd.DataFrame(session['channels_sitePositions'], columns=['channel 0', 'channel 1'])
-            # # merge with channles_df
-            # channels_df = pd.merge(brain, site, how='inner', left_index=True, right_index=True)
-            # # load probe, row and site
-            # meta = pd.DataFrame({'probe':session['channels_probe'][:,0],
-            #                             'raw row':session['channels_rawRow'][:,0],
-            #                             'channels_site':session['channels_site'][:,0] })
-            # # merge metha with channel_df
-            # channels_df = pd.merge(channels_df, meta, how='inner', left_index=True, right_index=True)
-            # # add channels_df to session dictionary
-            # session['channels_df']=channels_df
+        # load channel brain location infos
+        brain = pd.DataFrame(session['channels_brainLocation'])
+        # load channel probes
+        site = pd.DataFrame(session['channels_sitePositions'], columns=['channel 0', 'channel 1'])
+        # merge with channles_df
+        channels_df = pd.merge(brain, site, how='inner', left_index=True, right_index=True)
+        # load probe, row and site
+        meta = pd.DataFrame({'probe':session['channels_probe'][:,0],
+                                    'raw row':session['channels_rawRow'][:,0],
+                                    'channels_site':session['channels_site'][:,0] })
+        # merge metha with channel_df
+        channels_df = pd.merge(channels_df, meta, how='inner', left_index=True, right_index=True)
+        # add channels_df to session dictionary
+        session['channels_df']=channels_df
 
-        # create spikes dataframe spikes_df ============================================================================
+        # pars spikes info ============================================================================
         # create spike_df tataframe, with each spike time and the cluster it belongs to
-        spikes_df = pd.DataFrame( { 'cluster':spk_clusters[:,0], 'spike_times': spk_spikes[:,0] }) 
+        spikes_df = pd.DataFrame( { 'cluster':session['spikes_clusters'][:,0], 'spike_times': session['spikes_times'][:,0] }, ) 
         # add spikes to session dictionary
         session['spikes_df']=spikes_df
 
-        # create clusters/neurons dataframe clusters_df ============================================================================
-        #clusters = np.unique(spikes_df['cluster'])
+        # pars clusters info ============================================================================
+        # create cluster dataframe information and spikes for each cluster
+        clusters = np.unique(session['spikes_clusters'])
         # create number of spikes, phy2 manual cluster, 
-        clusters = np.unique(spk_clusters)
-        clusters_df = pd.DataFrame({'label':phy_label}, index=clusters )
-        clusters_df['label'] = clusters_df['label'].apply( lambda label: 'good' if label==2 else ('mua' if label==1 else 'bad') )
-        # drop rows with bad cells
-        #clusters_df.drop( clusters_df[(clusters_df['label']=='bad')].index,axis=0,inplace=True)
-        # create spikes colum with spiketimes
+        # leave out:  'probe':session['clusters_probes'][:,0], 'peak channel':session['clusters_peakChannel'][:,0]
+        clusters_df = pd.DataFrame({'lable':session['clusters__phy_annotation'][:,0]}, index=clusters )
+        # pars labels in strings 1 = good 3 = mua
+        clusters_df['lable'] = clusters_df['lable'].apply( lambda lable: 'good' if lable==2 else ('mua' if lable==1 else 'bad') )
 
+        # create spikes colum with spiketimes
         spk = pd.DataFrame( {'spikes':np.zeros(len(clusters), dtype=object)}, index=clusters )
-        # only select good clusters
         for group, frame in spikes_df.groupby('cluster'):
             spk['spikes'][group] = frame['spike_times'].values
+
         #merge spike column with clusters_df
         clusters_df = pd.merge(clusters_df, spk, how='right', left_index=True, right_index=True)
         # set index name
         clusters_df.index.name='cluster'
         # number of spikes per cluster
         clusters_df['total spikes'] = clusters_df['spikes'].apply(lambda row: len(row) )
+
+        # pars channel info for cluster
         # add recording position
         clusters_df['recording area'] = brain_region
 
+        # add clusters_df to session dictionary
         session['clusters_df'] = clusters_df
 
 
-        # create active trials dataframe activ_trials_df ============================================================================
+        # pars trials infos ===========================================================================
+        #total number of trials
+        ntrials = session['trials_included'].shape[0]
+        #number of active engaged trials
+        ntrials_active = len(response)
+        # create boolean array to denote active trials
+        active = np.zeros(ntrials)
+        active[:ntrials_active] = 1
         # create trials dataframe
-        trials_df = pd.DataFrame({'included':included_tr,
-                    'repetition number':rep_nrs,
-                    'start time':interval_times[:,0],
-                    'stim time':visual_times[:ntrials, :].flatten(),
-                    #'go cue':gocue_times,
-                    'response time':response_times.flatten(),
-                    'feedback time':feedback_times.flatten(),
-                    'end time':interval_times[:,1],
-                    'stim contrast left':vis_left[:ntrials].flatten(),
-                    'stim contrast right':vis_right[:ntrials].flatten(),
-                    'response choice':response,
-                    'feedback type':feedback_type,
-                    })
-        trials_df = trials_df.astype(dtype= {"repetition number":"int8", 
-                                            'stim contrast left':'int8', 
-                                            'stim contrast right':'int8',
-                                            'response choice': 'int8',
-                                            'feedback type':'int8'
-                                            })
+        trials_df = pd.DataFrame({'included':session['trials_included'][:,0],
+                                'active': active,
+                                'repetition number':session['trials_repNum'][:,0],
+                                # times of events
+                                'go cue':session['trials_goCue_times'][:,0],
+                                'stim time':session['trials_visualStim_times'][:,0],
+                                'response time':session['trials_response_times'][:,0],
+                                'feedback time':session['trials_feedback_times'][:,0],
+                                
+                                #'intervals':session['trials_intervals'][:,0], # same as go cue
+                                
+                                
+                                'go cue':session['trials_intervals'][:,0],
+                                
+                                'stim contrast left':session['trials_visualStim_contrastLeft'][:,0],
+                                'stim contrast right':session['trials_visualStim_contrastRight'][:,0],
+                                
+                                'response choice':session['trials_response_choice'][:,0],
+                                'response time':session['trials_response_times'][:,0],
+                                'feedback type':session['trials_feedbackType'][:,0],
+                                
+                                })
         # add wheelmovement to trials dv ===============
         #wheel = W[np.newaxis, :, :]
         whl = pd.DataFrame( {'wheel movement':np.zeros(ntrials)}, dtype=object) 
@@ -236,47 +180,19 @@ class NMA_project():
 
         #merge trials with wheel
         trials_df = pd.merge(trials_df, whl, how='right', left_index=True, right_index=True)
-
+    
         # add trials df to session
         session['trials_df'] = trials_df
-    
+
 
         return session
-
-    # save wheel movement per trial to numpy array in session folder
-    def save_wheel_to_npy(self, session):
-        """[save the wheel movement of active and passive trials to npy file]
-
-        Args:
-            session ([dict]): [session to save wheel movement from]
-        """        
-        folder = session['folder']
-        # save wheel movement of active trials
-        fname = os.path.join(folder, "wheel_per_trial.npy")
-        numpy.save(fname, session['wheel'], allow_pickle=True)
-        # save wheel movement of passive trials
-        fname = os.path.join(folder, "wheel_per_trial_p.npy")
-        numpy.save(fname, session['wheel_passive'], allow_pickle=True)
-        
-
-    # get spikes for given array within start stop sequence
-    def get_spikes_for_trial(self, array, start, stop): 
-        '''
-        params: array = numpy array (N,1) with values to check against
-                start, stop = value to find all values in array between
-        return: valus in array between start and stop
-        '''
-        ar = array[np.logical_and(array >= start, array <= stop)]
-        if ar.size > 0:
-            ar = ar[:] - ar[0]
-        return ar
 
 # Helper Functions to Load Data ============================================================================
     def get_good_cells(self, folder):
         # location in brain of each neuron
         brain_loc = os.path.join(folder, "channels.brainLocation.tsv")
-        phy_label = np.load(os.path.join(folder, "clusters._phy_annotation.npy")).flatten()
-        phy_label_good = (phy_label >= 2)
+
+        good_cells = (np.load(os.path.join(folder, "clusters._phy_annotation.npy")) >= 2 ).flatten()
         clust_channel = np.load(os.path.join(folder, "clusters.peakChannel.npy")).astype(int) - 1
         br = []
         with open(brain_loc, 'r') as tsv:
@@ -287,19 +203,12 @@ class NMA_project():
                     br.append(row[-1])
                 k+=1
         br = np.array(br)
-        good_cells = np.logical_and(phy_label_good, clust_channel.flatten()<len(br))
+        good_cells = np.logical_and(good_cells, clust_channel.flatten()<len(br))
         brain_region = br[clust_channel[:,0]]
 
 
-        return good_cells, brain_region, br, phy_label
+        return good_cells, brain_region, br
 
-    def get_all_spikes(self, folder):
-        fname = os.path.join(folder, "spikes.times.npy")
-        spikes = np.load(fname)
-        fname = os.path.join(folder, "spikes.clusters.npy")
-        clusters = np.load(fname)
-
-        return spikes, clusters
 
     def get_waves(self, folder):
         fname = os.path.join(folder, "clusters.waveformDuration.npy")
@@ -394,9 +303,7 @@ class NMA_project():
         vis_right_p = np.load(os.path.join(folder, "passiveVisual.contrastRight.npy")).flatten()
         vis_left_p = np.load(os.path.join(folder, "passiveVisual.contrastLeft.npy")).flatten()
         vis_times_p = np.load(os.path.join(folder,   "passiveVisual.times.npy"))
-        gocue_p = np.load(os.path.join(folder, "passiveBeeps.times.npy"))
-
-        return vis_times_p, vis_right_p, vis_left_p, gocue_p
+        return vis_times_p, vis_right_p, vis_left_p
 
 
     def get_event_types(self, folder):
@@ -404,24 +311,20 @@ class NMA_project():
         vis_right = np.load(os.path.join(folder, "trials.visualStim_contrastRight.npy")).flatten()
         vis_left = np.load(os.path.join(folder, "trials.visualStim_contrastLeft.npy")).flatten()
         feedback_type = np.load(os.path.join(folder, "trials.feedbackType.npy")).flatten()
-        included_tr= np.load(os.path.join(folder, "trials.included.npy")).flatten()
-        rep_nr= np.load(os.path.join(folder, "trials.repNum.npy")).flatten()
 
-        return response, vis_right, vis_left, feedback_type, included_tr, rep_nr
+        return response, vis_right, vis_left, feedback_type
 
     def get_event_times(self, folder):
         response_times = np.load(os.path.join(folder, "trials.response_times.npy"))
         visual_times = np.load(os.path.join(folder,   "trials.visualStim_times.npy"))
-        gocue_times = np.load(os.path.join(folder,   "trials.goCue_times.npy"))
-        feedback_times = np.load(os.path.join(folder,   "trials.feedback_times.npy"))
-        interval_times = np.load(os.path.join(folder, "trials.intervals.npy"))
+        gocue = np.load(os.path.join(folder,   "trials.goCue_times.npy"))
+        feedback = np.load(os.path.join(folder,   "trials.feedback_times.npy"))
 
         rsp = response_times - visual_times
-        feedback = feedback_times - visual_times
-        gocue = gocue_times - visual_times
-        interval = interval_times - visual_times
+        feedback = feedback - visual_times
+        gocue = gocue - visual_times
 
-        return response_times, visual_times, gocue_times, feedback_times, interval_times, rsp, feedback, gocue, interval
+        return response_times, visual_times, rsp, gocue, feedback
 
     def get_wheel(self, folder):
         wheel = np.load(os.path.join(folder, "wheel.position.npy")).flatten()
