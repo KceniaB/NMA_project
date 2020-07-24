@@ -12,7 +12,7 @@ from sklearn.decomposition import TruncatedSVD
 
 
 """
-Class for all the functions from Samual, Kcenia and Max NMA Projekt
+Class for all the functions from Samuel, Kcenia and Max NMA Projekt
 
 - put in finalized functions - production ready
 - pay close attantion on documentation and help files
@@ -51,15 +51,16 @@ class NMA_project():
         from os import listdir
         from os.path import isfile, join
         files = [f for f in listdir(folder) if isfile(join(folder, f))]
+        files = [f for f in files if f[:2]!='._'] #Samuel added this to deal with weird bug
         names = ['_'.join(f.split('.')[:-1]) for f in files]
         session = dict()
         for (file_, name_) in zip(files, names):
             if file_.split('.')[-1] == 'npy':
-                session[name_] = np.load(folder+'/'+file_)
+                session[name_] = np.load(join(folder,file_))
             if file_.split('.')[-1] == 'tsv':
-                session[name_] = pd.read_table(folder+'/'+file_)
+                session[name_] = pd.read_table(join(folder,file_))
 
-        # Load Pitarius Session Data ===========================================================================
+        # Load Pachitariu Session Data ===========================================================================
         # good cells and brain regions
         good_cells, brain_region, br = self.get_good_cells(folder)
         # event types
