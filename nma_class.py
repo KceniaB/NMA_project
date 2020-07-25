@@ -21,17 +21,17 @@ Class for all the functions from Samuel, Kcenia and Max NMA Projekt
 
 
 
-class NMA_project():
+class loader():
     """[class to load each session and cleanup data]
 
     Returns:
         [type]: [description]
     """    
-    def __init__(self, main_folder, init_default=True, dt=1/1000, dT=2.5, T0=0.5):
+    def __init__(self, main_folder, init_default=False, dt=1/1000, dT=2.5, T0=0.5):
         """[initialize object]
 
         Args:
-            main_folder ([string]): [filepath to all the sessions folders]
+            #main_folder ([string]): [filepath to all the sessions folders]
             init_default (bool, optional): [initialize first folder in parent folder]. Defaults to True.
             dt ([type], optional): [timewindow for spikes_ar]. Defaults to 1/1000.
             dT (float, optional): [description]. Defaults to 2.5.
@@ -45,7 +45,7 @@ class NMA_project():
         self.subfolders, self.all_sessions = self.get_available_session()
         # load first session
         if init_default:
-            self.std_session = self.load_session(self.subfolders[0])
+            self.default_session = self.load_session(self.subfolders[0])
     
     #  find all available sessions
     def get_available_session(self):
@@ -148,16 +148,14 @@ class NMA_project():
             pup, xy, pup_times = self.get_pup(folder)
             # load the LFP
             #L, ba_lfp = self.get_LFP(folder, br, visual_times-T0, dT, dt, T0)
-            # trials loader
-            S  = self.psth(spikes, sclust,   visual_times-self.T0, self.dT, self.dt)
+            
             # wheel trials
             W = self.wpsth(wheel, wheel_times,   visual_times-self.T0, self.dT, self.dt)
             # pupil loader
             P = self.ppsth(pup, pup_times,   visual_times-self.T0, self.dT, self.dt)
             # add spike waveform information
             twav, w, u = self.get_waves(folder)
-            good_cells = good_cells * (np.mean(S, axis=(1,2))>0)
-            S  = S[good_cells].astype('int8') 
+            
             
             # put all the variables into dictionary
             session = dict()
@@ -165,9 +163,8 @@ class NMA_project():
             # number of active trials
             ntrials = len(response)
             session['folder'] = folder
-            session['clusters'] = good_cells
+            session['clusters'] = np.arange(len(good_cells))[good_cells]
             session['brain_area'] = brain_region[good_cells]
-            session['spikes_ar']=S[:, :ntrials, :]
             session['wheel'] = W[np.newaxis, :ntrials, :]
             session['pupil'] = P[:, :ntrials, :]
             session['response'] = response
@@ -184,14 +181,13 @@ class NMA_project():
             session['waveform_u'] = u[good_cells].astype('float32')
             session['bin_size'] = self.dt
             session['stim_onset'] = self.T0
-            session['spikeas_ar_passive'] = S[:, ntrials:, :]
             session['wheel_passive'] = W[np.newaxis, ntrials:, :]
             session['pupil_passive'] = P[:, ntrials:, :]
             #session['lfp_passive'] = L[:, ntrials:, :]
             session['contrast_right_passive'] = vis_right[ntrials:]
             session['contrast_left_passive'] = vis_left[ntrials:]
-        
-            del S
+            
+
             # pars probe infos ============================================================================
                 # # load channel brain location infos
                 # brain = pd.DataFrame(session['channels_brainLocation'])
@@ -281,11 +277,39 @@ class NMA_project():
             session['spikes_df'].to_pickle(os.path.join(folder, 'spikes_df.pd'), compression='gzip' )
             #session['clusters_df'].to_csv(os.path.join(folder, 'clusters_df.csv') )
             session['clusters_df'].to_pickle(os.path.join(folder, 'clusters_df.pd'), compression='gzip' )
-            np.save( os.path.join(folder, 'spikes_ar.npy'), session['spikes_ar'], allow_pickle=True )
+            # spikes are is too big - dont load it by default
+            #np.save( os.path.join(folder, 'spikes_ar.npy'), session['spikes_ar'], allow_pickle=True )
             #sparse.save_npz(os.path.join(folder, 'spikes_ar.npy'), sparse.csr_matrix(session['spikes_ar']) )
         
 
         return session
+    
+    # load binned spikes for all trials and all sessions
+    def binned_spikes(self, folder, TO=self.T0, dT=self.dT, dt=self.dt):
+        """[load spikes for all good neurons an all trials binned to 250 bins per trial]
+
+        Args:
+            folder ([string]): [folder of session to load]
+            T0 ([float]): [start time for each trial bin]
+            dT ([float]): [bin width]
+            dt ([float]): [bin steps]
+
+        Returns:
+            spikes_ar ([numpy array]): [spikes of active trials (neuron, trial, bin)]
+            spikes_ar ([numpy array]): [spikes of passive trials (neuron, trial_passiv, bin)]
+        """        
+        # event times
+        response_times, visual_times, _, _, _, _, _, _,  = self.get_event_times(folder)   
+        # get spikes and clusters of spikes
+        spikes, sclust = self.get_spikes(folder)
+        # trials loader
+        ntrials = len(response_times)
+        S  = self.psth(spikes, sclust,   visual_times-self.T0, self.dT, self.dt)
+        S  = S[good_cells].astype('int8') 
+        spikes_ar=S[:, :ntrials, :]
+        spikes_ar_passive = S[:, ntrials:, :]
+        return spikes_ar, spikes_ar_passive
+
 
     # save wheel movement per trial to numpy array in session folder
     def save_wheel_to_npy(self, session):
@@ -315,7 +339,7 @@ class NMA_project():
             ar = ar[:] - ar[0]
         return ar
 
-# Helper Functions to Load Data ============================================================================
+    # Helper Functions to Load Data ============================================================================
     def get_good_cells(self, folder):
         # location in brain of each neuron
         brain_loc = os.path.join(folder, "channels.brainLocation.tsv")
@@ -426,7 +450,7 @@ class NMA_project():
             #         LFP.extend(lfp)
             # LFP = np.array(LFP)
             fname_lfp_times = '%s_t0.imec.lf.timestamps.npy'%(prb[ip])
-            lfp_times = np.load(os.path.join(self.folder, fname_lfp_times))
+            lfp_times = np.load(os.path.join(folder, fname_lfp_times))
             L.extend(ppsth(LFP, lfp_times,  etime, dT, dt))
 
         L = np.array(L)
