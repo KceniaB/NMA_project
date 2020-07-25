@@ -285,19 +285,26 @@ class loader():
         return session
     
     # load binned spikes for all trials and all sessions
-    def binned_spikes(self, folder)#, TO=self.T0, dT=self.dT, dt=self.dt):
+    def binned_spikes(self, folder, TO=None, dT=None, dt=None):
         """[load spikes for all good neurons an all trials binned to 250 bins per trial]
 
         Args:
-            folder ([string]): [folder of session to load]
-            T0 ([float]): [start time for each trial bin]
-            dT ([float]): [bin width]
-            dt ([float]): [bin steps]
+            folder ([string]): [folder of session to load, default =]
+            T0 ([float]): [start time for each trial bin default T0=0.5]
+            dT ([float]): [bin width, default dT=2.5]
+            dt ([float]): [bin steps default  dt=1/1000]
 
         Returns:
             spikes_ar ([numpy array]): [spikes of active trials (neuron, trial, bin)]
             spikes_ar ([numpy array]): [spikes of passive trials (neuron, trial_passiv, bin)]
         """        
+        # ititialize default values:
+        if T0 is None:
+            TO=self.T0
+        if dT is None:
+            dT=self.dT
+        if dt is None:
+            dt=self.dt
         # event times
         response_times, visual_times, _, _, _, _, _, _,  = self.get_event_times(folder)   
         # get spikes and clusters of spikes
