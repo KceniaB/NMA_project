@@ -114,7 +114,7 @@ class loader():
         """        
         # check if fast is selected
 
-        files = ['trials_df.pd', 'spikes_df.pd', 'clusters_df.pd', 'spikes_ar.npy']
+        files = ['trials_df.pd', 'spikes_df.pd', 'clusters_df.pd']#, 'spikes_ar.npy']
         files_exist = [ path.exists( os.path.join(folder, fi) ) for fi in files ]
         if fast and all(files_exist):
             session = dict()
