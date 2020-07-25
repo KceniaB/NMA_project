@@ -124,7 +124,7 @@ class loader():
             session['spikes_df'] = pd.read_pickle(os.path.join(folder, 'spikes_df.pd'), compression='gzip' )
             #session['clusters_df'] = pd.read_csv(os.path.join(folder, 'clusters_df.csv') )
             session['clusters_df'] = pd.read_pickle(os.path.join(folder, 'clusters_df.pd'), compression='gzip' )
-            session['spikes_ar'] = np.load(os.path.join(folder, 'spikes_ar.npy') )
+            #session['spikes_ar'] = np.load(os.path.join(folder, 'spikes_ar.npy') )
             #session['spikes_ar'] = sparse.load_npz(os.path.join(folder, 'spikes_ar.npy') ).toarray()
 
 
