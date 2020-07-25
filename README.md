@@ -37,8 +37,20 @@ and load the default session:
     
 ---
 
-**alternatively you can also initizalize the loader object with the default session = first folder in main folder:**
+### alternatively you can also initizalize the loader object with the default session = first folder in main folder:
 
     # initialize with default session
     loader = loader(main_folder, init_default=True)
     session = loader.default_session
+
+### to speed up loading process:
+to spead up the loading process the `spikes_df`, `trials_df` and `clusters_df`can be exportet via pickl to 
+a gzip file and later directly read without the need for parsing
+
+read via fast method:
+
+    load_session(folder, fast=True):
+
+to write and or update files:
+
+    load_session(folder, update=True):
