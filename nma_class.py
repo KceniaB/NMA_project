@@ -27,7 +27,16 @@ class NMA_project():
     Returns:
         [type]: [description]
     """    
-    def __init__(self, main_folder, init_default=False, dt=1/1000, dT=2.5, T0=0.5):
+    def __init__(self, main_folder, init_default=True, dt=1/1000, dT=2.5, T0=0.5):
+        """[initialize object]
+
+        Args:
+            main_folder ([string]): [filepath to all the sessions folders]
+            init_default (bool, optional): [initialize first folder in parent folder]. Defaults to True.
+            dt ([type], optional): [timewindow for spikes_ar]. Defaults to 1/1000.
+            dT (float, optional): [description]. Defaults to 2.5.
+            T0 (float, optional): [start time for spikes_ar]. Defaults to 0.5.
+        """        
         self.dt = dt
         self.dT = dT
         self.T0 = T0
