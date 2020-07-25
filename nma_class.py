@@ -285,8 +285,7 @@ class loader():
         return session
     
     # load binned spikes for all trials and all sessions
-    """
-    def binned_spikes(self, folder, TO=self.T0, dT=self.dT, dt=self.dt):
+    def binned_spikes(self, folder)#, TO=self.T0, dT=self.dT, dt=self.dt):
         """[load spikes for all good neurons an all trials binned to 250 bins per trial]
 
         Args:
@@ -310,7 +309,6 @@ class loader():
         spikes_ar=S[:, :ntrials, :]
         spikes_ar_passive = S[:, ntrials:, :]
         return spikes_ar, spikes_ar_passive
-    """
 
     # save wheel movement per trial to numpy array in session folder
     def save_wheel_to_npy(self, session):
