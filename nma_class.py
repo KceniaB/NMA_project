@@ -174,8 +174,8 @@ class loader():
             session['feedback_time'] = feedback
             session['feedback_type'] = feedback_type  
             session['gocue'] = gocue
-            session['mouse_name'] = folder.split('\\')[1].split('_')[0]
-            session['date_exp'] = folder.split('\\')[1].split('_')[1]
+            #session['mouse_name'] = folder.split('\\')[1].split('_')[0]
+            #session['date_exp'] = folder.split('\\')[1].split('_')[1]
             session['trough_to_peak'] = twav[good_cells].flatten()
             session['waveform_w'] = w[good_cells].astype('float32')
             session['waveform_u'] = u[good_cells].astype('float32')
