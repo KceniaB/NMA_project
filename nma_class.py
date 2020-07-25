@@ -19,6 +19,25 @@ Class for all the functions from Samuel, Kcenia and Max NMA Projekt
 
 """
 
+class compute():
+    """[class to compute stuff]
+
+    Returns:
+        [type]: [description]
+    """    
+    def __init__(self, session):
+        self.session = session
+        self.trials_df = session['trials_df']
+        self.spikes_df = session['spikes_df']
+        self.clusters_df = session['clusters_df']
+
+
+
+
+
+
+# ===============================================================================================================================================
+
 
 
 class loader():
@@ -270,7 +289,7 @@ class loader():
             session['trials_df'] = trials_df
 
         # write files if update or file does not exist
-        if update or any(files_exist):
+        if update #or any(files_exist):
             #session['trials_df'].to_csv(os.path.join(folder, 'trials_df.csv') )
             session['trials_df'].to_pickle(os.path.join(folder, 'trials_df.pd'), compression='gzip' )    
             #session['spikes_df'].to_csv(os.path.join(folder, 'spikes_df.csv') )
@@ -345,7 +364,7 @@ class loader():
             ar = ar[:] - ar[0]
         return ar
 
-    # Helper Functions to Load Data ============================================================================
+ # Helper Functions to Load Data ============================================================================
     def get_good_cells(self, folder):
         # location in brain of each neuron
         brain_loc = os.path.join(folder, "channels.brainLocation.tsv")
@@ -575,3 +594,5 @@ class loader():
                         ["BLA", "BMA", "EP", "EPd", "MEA"] # cortical subplate
                     ]
         return regions, brain_groups
+
+
