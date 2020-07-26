@@ -289,7 +289,7 @@ class loader():
             session['trials_df'] = trials_df
 
         # write files if update or file does not exist
-        if update #or any(files_exist):
+        if update: #or any(files_exist):
             #session['trials_df'].to_csv(os.path.join(folder, 'trials_df.csv') )
             session['trials_df'].to_pickle(os.path.join(folder, 'trials_df.pd'), compression='gzip' )    
             #session['spikes_df'].to_csv(os.path.join(folder, 'spikes_df.csv') )
