@@ -263,9 +263,6 @@ class eda():
 
 
 
-
-
-
 class loader():
     """[class to load each session and cleanup data]
 
