@@ -21,19 +21,162 @@ Class for all the functions from Samuel, Kcenia and Max NMA Projekt
 
 """
 
-class compute():
-    """[class to compute stuff]
+class pca():
+    """[class to perform PCA with]
 
     Returns:
         [type]: [description]
     """    
-    def __init__(self, session):
-        self.session = session
-        self.trials_df = session['trials_df']
-        self.spikes_df = session['spikes_df']
-        self.clusters_df = session['clusters_df']
+    def __init__(self):
+        pass
 
 
+   # helper functions ==================================================================
+    def get_data_matrix(self, trials_df, clusters_df, window):
+        """get data matrix of mean firing around event given neurons and trials [trials, ]
+
+        Args:
+            trials_df (dataframe column): pandas series with spike times for each neuron 
+            clusters_df (dataframe column): pandas series with event times for each trial
+            window (float): window to compute firing rate for event_time-window < firing rate < event_time+window
+
+        Returns:
+            [type]: [description]
+        """        
+        # initialize data matrix X
+        X = np.zeros([trials_df.shape[0], clusters_df.shape[0]])
+        # running index for column = neuron
+        X_j = 0
+        for row in clusters_df:
+            # running index for row = trial
+            X_i = 0
+            for trial in trials_df:
+                start = trial-window
+                stop = trial+window
+                X[X_i,X_j] = np.sum( np.logical_and(row >= start, row <= stop)  )
+                X_i += 1
+            X_j += 1
+        return X
+
+    def change_of_basis(self, X, W):
+        """
+        Projects data onto a new basis.
+        Args:
+            X (numpy array of floats) : Data matrix each column corresponding to a
+                                        different random variable
+            W (numpy array of floats) : new orthonormal basis columns correspond to
+                                        basis vectors
+        Returns:
+            (numpy array of floats)   : Data matrix expressed in new basis
+        """
+        Y = np.matmul(X, W)
+        return Y
+
+    def get_sample_cov_matrix(self, X):
+        """
+        Returns the sample covariance matrix of data X.
+        Args:
+            X (numpy array of floats) : Data matrix each column corresponds to a
+                                        different random variable
+        Returns:
+            (numpy array of floats)   : Covariance matrix
+        """
+        X = X - np.mean(X, 0)
+        cov_matrix = 1 / X.shape[0] * np.matmul(X.T, X)
+        return cov_matrix
+
+
+    def sort_evals_descending(self, evals, evectors):
+        """
+        Sorts eigenvalues and eigenvectors in decreasing order. Also aligns first two
+        eigenvectors to be in first two quadrants (if 2D).
+        Args:
+            evals (numpy array of floats)    :   Vector of eigenvalues
+            evectors (numpy array of floats) :   Corresponding matrix of eigenvectors
+                                                each column corresponds to a different
+                                                eigenvalue
+        Returns:
+            (numpy array of floats)          : Vector of eigenvalues after sorting
+            (numpy array of floats)          : Matrix of eigenvectors after sorting
+        """
+        index = np.flip(np.argsort(evals))
+        evals = evals[index]
+        evectors = evectors[:, index]
+        if evals.shape[0] == 2:
+            if np.arccos(np.matmul(evectors[:, 0], 1 / np.sqrt(2) * np.array([1, 1]))) > np.pi / 2:
+                evectors[:, 0] = -evectors[:, 0]
+            if np.arccos(np.matmul(evectors[:, 1], 1 / np.sqrt(2)*np.array([-1, 1]))) > np.pi / 2:
+                evectors[:, 1] = -evectors[:, 1]
+        return evals, evectors
+
+    def pca(self, X):
+        """
+        Performs PCA on multivariate data. Eigenvalues are sorted in decreasing order
+        Args:
+            X (numpy array of floats) :   Data matrix each column corresponds to a
+                                        different random variable
+        Returns:
+            (numpy array of floats)    : Data projected onto the new basis
+            (numpy array of floats)    : Vector of eigenvalues
+            (numpy array of floats)    : Corresponding matrix of eigenvectors
+        """
+        X = X - np.mean(X, 0)
+        cov_matrix = self.get_sample_cov_matrix(X)
+        evals, evectors = np.linalg.eigh(cov_matrix)
+        evals, evectors = self.sort_evals_descending(evals, evectors)
+        score = self.change_of_basis(X, evectors)
+        return score, evectors, evals
+
+    def get_variance_explained(self, evals):
+        """
+        Calculates variance explained from the eigenvalues.
+        Args:
+            evals (numpy array of floats) : Vector of eigenvalues
+        Returns:
+            (numpy array of floats)       : Vector of variance explained
+        """
+        # cumulatively sum the eigenvalues
+        csum = np.cumsum(evals)
+        # normalize by the sum of eigenvalues
+        variance_explained = csum/np.sum(evals)
+        return variance_explained
+
+   # plot functions ====================================================================
+    def plot_eigenvalues(self, evals):
+        """
+        Plots eigenvalues.
+        Args:
+            (numpy array of floats) : Vector of eigenvalues
+        Returns:
+            Nothing.
+        """
+        plt.figure()
+        plt.plot(np.arange(1, len(evals) + 1), evals, 'o-k')
+        plt.xlabel('Component')
+        plt.ylabel('Eigenvalue')
+        plt.title('Scree plot')
+
+        
+    def plot_variance_explained(self, variance_explained, variance_level):
+        """
+        Plots eigenvalues.
+        Args:
+            variance_explained (numpy array of floats) : Vector of variance explained
+                                                        for each PC
+            variance_level (float): vertical line at % variance explained
+        Returns:
+            Nothing.
+        """
+        plt.figure()
+        plt.plot(np.arange(1, len(variance_explained) + 1), variance_explained, '--k', label='Variance Explained')
+        # plot vertica line wher variance explained exceeds variance_level
+        PC = np.argmax(variance_explained>variance_level)
+        plt.vlines(PC, variance_explained.min(), 
+                    variance_explained.max(), colors='r', label=f"{variance_level} % Variance Explained wit first {PC} components")
+        # add label with variance_level and PC at that level
+        plt.legend()
+        plt.xlabel('Number of components')
+        plt.ylabel('Variance explained')
 
 
 
