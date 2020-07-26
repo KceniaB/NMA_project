@@ -54,3 +54,37 @@ read via fast method:
 to write and or update files:
 
     load_session(folder, update=True):
+    
+# Plotting Functions:
+collection of all plotting functions in nma_class 
+
+import eda module and create object:
+
+    from nma_class import eda
+
+    data = [spikes_df, clusters_df, trials_df]
+    params = dict()
+    params['sampling_rate'] = 20000
+
+    session_eda = eda(data, all_session_names[0], all_session_folders[0], params)
+
+## plot spike trians
+![](.images/spike_train.png?raw=true "example")
+
+    cluster = 4
+    spikes = clusters_df.loc[cluster, 'spikes']
+    trials_select_df = trials_df.loc[trials_df['included']==True, ['start time','end time']]
+    fig, ax = session_eda.plt_spike_train(cluster, spikes, trials_select_df)
+    plt.show()
+
+## plot spike trains around event with histogram
+![](.images/spike_around_event.png?raw=true "example")
+
+    title = None
+    cluster = 8
+    event = 'stim time'
+    window = 1
+    trials_select_df =  session['trials_df'].loc[session['trials_df']['included']==True, 'stim time']
+    spikes = clusters_df.loc[8, 'spikes']
+
+    fig, (ax1, ax2, ax3) = plt_spike_train_hist_bar(cluster, event, window, trials_select_df, spikes)
