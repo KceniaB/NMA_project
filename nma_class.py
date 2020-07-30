@@ -13,6 +13,12 @@ from scipy.interpolate import interp1d
 from sklearn.decomposition import TruncatedSVD
 import scipy.stats as st
 import platform
+from matplotlib import animation
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import cross_val_score
+import requests
+import hashlib
 
 
 """
@@ -20,6 +26,218 @@ Class for all the functions from Samuel, Kcenia and Max NMA Projekt
 
 
 """
+
+class glm():
+    """[class to perform glm with]
+
+    Returns:
+        [type]: [description]
+    """    
+    def __init__(self):
+        pass
+
+    # helper functions ===============================================================
+    def get_datamatrix(self, main_folder, all_session_folders, 
+                        all_session_names, areas_selected, window_correction, 
+                        subselect_area=False, window=2.5, event='stim time', to_pca=20):
+        # create X_glm data matrix
+        X_glm_all = None
+        # create x matrix for glm
+        y_glm_all = None
+
+        # impot loader clas
+        import loader
+        # initialize loader object
+        loader_obj = loader(main_folder)
+
+        import pca
+        pac = pca()
+
+        for folder, name in zip(all_session_folders, all_session_names):
+
+            # load session ================================================================
+            session = loader_obj.load_session(folder, fast=True, update=False)
+            
+            # select dataframes and clean up ===========
+            spikes_df = session['spikes_df']
+            clusters_df = session['clusters_df']
+            # drop bad clusters
+            clusters_df.drop(clusters_df[clusters_df['label']=='bad'].index, axis=0, inplace=True)
+            trials_df = session['trials_df']
+            # drop not included trials
+            trials_df.drop(trials_df[~trials_df['included']].index, axis=0, inplace=True)
+            trials_df.drop('included', axis=1, inplace=True)
+            # insert trial length
+            trials_df.insert(7, 'trial length', (trials_df['end time']-trials_df['start time']) )
+            
+
+            
+            # Principal Component Analysis==================================================
+            # all visual areas
+            if subselect_area:
+                neuron_selector = clusters_df['recording area'].isin(areas_selected)
+
+            else:
+                # all neurons
+                #neuron_selector = np.full(clusters_df.shape[0], True)
+                spikes = clusters_df[neuron_selector]['spikes']
+
+            if len(spikes) != 0:
+
+                # select only trials which have a visual stimulus
+                trials_selector = np.logical_or(trials_df['stim contrast left']!=0, trials_df['stim contrast right']!=0)
+                trials = trials_df[trials_selector]
+                # remove trials where stim is at both
+                sub_selector = ~np.logical_and(trials['stim contrast left']==1, trials['stim contrast right']==1)
+                trials= trials[sub_selector]
+
+                ev_bevore = trials[event]+window_correction
+
+                # get data matrix
+                # get all spikes event-windw< < event+window
+                X_pca = pca.get_data_matrix(ev_bevore, spikes, window)
+
+                # perform PCA
+                score, evectors, evals = pca.pca(X_pca)
+
+                # GLM =========================================================================
+                # prepare data for linear model
+                # visual stimulus side
+                # left = 0
+                # right = 1
+                y_glm = trials['stim contrast right'] #these are the binary choices the animal made on each trial (trialnr)
+                
+                # create data matrix
+                X_glm = score[:,:to_pca] #these are the principal components first 30 across all subselected trials (trialnr x pcs)
+
+                # add X_glm and y_glm to overall data matrix
+                # concatenate X_glm_all with X_glm
+                if X_glm_all is None:
+                    X_glm_all = X_glm
+                else:
+                    X_glm_all = np.append(X_glm_all, X_glm, axis=0)
+
+                # concatenate y_glm_all with y_glm
+                if y_glm_all is None:
+                    y_glm_all = y_glm
+                else:
+                    y_glm_all = np.append(y_glm_all, y_glm, axis=0)
+                
+            print(f"finished session{name}")
+        return X_glm_all, y_glm_all
+
+
+    def sigmoid(self, z):
+        return 1 / (1+np.exp(-z))
+
+    def model_selection(self, X, y, C_values, CV_values):
+        """Compute CV accuracy for each C value.
+
+        Args:
+        X (2D array): Data matrix
+        y (1D array): Label vector
+        C_values (1D array): Array of hyperparameter values
+
+        Returns:
+        accuracies (1D array): CV accuracy with each value of C
+
+        """
+        accuracies_all = []
+
+        for CV in CV_values:
+
+            accuracies = []
+
+            for C in C_values:
+
+                # Initialize and fit the model
+                model = LogisticRegression(penalty='l2',C=C, solver='lbfgs',max_iter=5000)
+                model.fit(X,y)
+
+                # Get the accuracy for each test split
+                accs = cross_val_score(model,X,y,cv=int(CV))
+
+                # Store the average test accuracy for this value of C
+                accuracies.append(np.mean(accs))
+
+            accuracies_all.append(accuracies)
+
+        return accuracies_all
+
+   # ploting functions ==============================================================
+    def plot_weights(self, models, sharey=True):
+        """Draw a stem plot of weights for each model in models dict."""
+        n = len(models)
+        fig = plt.figure(figsize=(10, 2.5 * n))
+        axs = f.subplots(n, sharex=True, sharey=sharey)
+        axs = np.atleast_1d(axs)
+        for ax, (title, model) in zip(axs, models.items()):
+            ax.margins(x=.02)
+            stem = ax.stem(model.coef_.squeeze(), use_line_collection=True)
+            stem[0].set_marker(".")
+            stem[0].set_color(".2")
+            stem[1].set_linewidths(.5)
+            stem[1].set_color(".2")
+            stem[2].set_visible(False)
+            ax.axhline(0, color="C3", lw=3)
+            ax.set(ylabel="Weight", title=title)
+        ax.set(xlabel="Neuron (a.k.a. feature)")
+        fig.tight_layout()
+        return fig, axs
+
+
+    def plot_function(self, f, name, var, points=(-10, 10)):
+        """Evaluate f() on linear space between points and plot.
+
+        Args:
+        f (callable): function that maps scalar -> scalar
+        name (string): Function name for axis labels
+        var (string): Variable name for axis labels.
+        points (tuple): Args for np.linspace to create eval grid.
+        """
+        x = np.linspace(*points)
+        ax = plt.figure().subplots()
+        ax.plot(x, f(x))
+        ax.set(
+        xlabel=f'${var}$',
+        ylabel=f'${name}({var})$'
+        )
+        return ax
+
+    def plot_model_selection(self, C_values, accuracies):
+        """Plot the accuracy curve over log-spaced C values."""
+        ax = plt.figure().subplots()
+        ax.set_xscale("log")
+        ax.plot(C_values, accuracies, marker="o")
+        best_C = C_values[np.argmax(accuracies)]
+        ax.set(
+        xticks=C_values,
+        xlabel="$C$",
+        ylabel="Cross-validated accuracy",
+        title=f"Best C: {best_C:1g} ({np.max(accuracies):.2%})",
+        )
+        return ax
+
+    def plot_non_zero_coefs(self, C_values, non_zero_l1, n_voxels):
+        """Plot the accuracy curve over log-spaced C values."""
+        ax = plt.figure().subplots()
+        ax.set_xscale("log")
+        ax.plot(C_values, non_zero_l1, marker="o")
+        ax.set(
+        xticks=C_values,
+        xlabel="$C$",
+        ylabel="Number of non-zero coefficients",
+        )
+        ax.axhline(n_voxels, color=".1", linestyle=":")
+        ax.annotate("Total\n# Neurons", (C_values[0], n_voxels * .98), va="top")
+        return ax
+   
+
+
+
+
+# ===============================================================================================================================================
+
 
 class pca():
     """[class to perform PCA with]
@@ -116,15 +334,15 @@ class pca():
             X (numpy array of floats) :   Data matrix each column corresponds to a
                                         different random variable
         Returns:
-            (numpy array of floats)    : Data projected onto the new basis
-            (numpy array of floats)    : Vector of eigenvalues
-            (numpy array of floats)    : Corresponding matrix of eigenvectors
+            scores (numpy array of floats)    : Data projected onto the new basis
+            evectors (numpy array of floats)    : Vector of eigenvalues
+            evals (numpy array of floats)    : Corresponding matrix of eigenvectors
         """
         X = X - np.mean(X, 0)
         cov_matrix = self.get_sample_cov_matrix(X)
         evals, evectors = np.linalg.eigh(cov_matrix)
         evals, evectors = self.sort_evals_descending(evals, evectors)
-        score = self.change_of_basis(X, evectors)
+        score = np.matmul(X, evectors)
         return score, evectors, evals
 
     def get_variance_explained(self, evals):
@@ -178,7 +396,93 @@ class pca():
         plt.xlabel('Number of components')
         plt.ylabel('Variance explained')
 
+    def plot_pca_scatter(self, scores, pc1, pc2, labels, print_labels=False, facecolor='r', edgecolor='r', fig=None, ax=None):
+        """2d scatter plot with ability to specify colour and shape of point and plot trial number for each point 
 
+        Args:
+            score (float): values for features in new PC base
+            pc1 (int): principal component vecotr for x axis
+            pc2 (int): principal component vector for y axis   
+            label (any): labels to plot for datapoints (must be same length as selected scores)
+            print_label (bool, optional):  Defaults to False.
+            facecolor (str, optional): . Defaults to 'r'.
+            edgecolor (str, optional): if face and edge colour same = full point Defaults to 'r'.
+            fig ([type], optional): optional pass fig if not will be created. Defaults to None.
+            ax ([type], optional): [description]. Defaults to None.
+
+        Returns:
+            [type]: [description]
+        """        
+        if fig is None:
+            fig, ax = plt.subplots()
+        # get data
+        xs = scores[:,pc1]
+        ys = scores[:,pc2]
+        # plot each trial
+        ax.scatter(xs, ys, facecolors=facecolor, edgecolors=edgecolor)
+        # add labels and title
+        plt.xlabel(f"Principal component {pc1}")
+        plt.ylabel(f"Principal component {pc2}")
+        plt.title("Trials for two principal components")
+        # add datapoints
+        if print_labels:
+            # zip joins x and y coordinates and palebls in pairs
+            for x,y,label in zip(xs,ys,labels):
+                # this method is called for each point
+                plt.annotate(label, # this is the text
+                            (x,y), # this is the point to label
+                            textcoords="offset points", # how to position the text
+                            xytext=(0,5), # distance from text to points (x,y)
+                            size=5,
+                            ha='center') # horizontal alignment can be left, right or center
+        return fig, ax
+
+    def plot_pca_scatter_animated(self, scores, pc1, pc2, fig=None, ax=None, line_col='grey', line_width=1, 
+                         maker_shape='o', marker_col='red', marker_facecol='red', marker_size=4):  
+        """animate 2d scatter plot
+
+        Args:
+            score (float): values for features in new PC base
+            pc1 (int): principal component vecotr for x axis
+            pc2 (int): principal component vector for y axis 
+            fig ([type], optional): optional pass fig if not will be created. Defaults to None.
+            ax ([type], optional): [description]. Defaults to None.
+            line_col (str, optional): [description]. Defaults to 'grey'.
+            line_width (int, optional): [description]. Defaults to 1.
+            maker_shape (str, optional): [description]. Defaults to 'o'.
+            marker_col (str, optional): [description]. Defaults to 'red'.
+            marker_facecol (str, optional): [description]. Defaults to 'red'.
+            marker_size (int, optional): [description]. Defaults to 4.
+
+        Returns:
+            fig (matplotlib subplot figure)
+            ax (matplotlib subplot axis)
+            anim (matplotlib animation): [description]
+        """        
+        # initialize firuge
+        if fig is None:
+            fig, ax = plt.subplots()
+        # specify data
+        xs = scores[:,pc1]
+        ys = scores[:,pc2]
+        # set axis max min
+        ax.set_xlim([np.min(xs)-50, np.max(xs)+50])
+        ax.set_ylim([np.min(ys)-50, np.max(ys)+50])
+        # add labels and title
+        ax.set_xlabel(f"Principal component {pc1}")
+        ax.set_ylabel(f"Principal component {pc2}")
+        ax.set_title("Trials for two principal components")
+        # init plot
+        graph, = ax.plot([] , [], zorder=1, #plot data
+                        color=line_col, linewidth=line_width, #set line params
+                        marker=maker_shape, markeredgecolor=marker_col, markerfacecolor=marker_facecol, markersize=marker_size) #set dots
+        # define animation function
+        def update(i, xs, ys, graph):
+            graph.set_data(xs[:i], ys[:i])
+            return graph
+        # animation
+        anim = animation.FuncAnimation(fig, update,  len(xs), fargs=[xs, ys, graph], blit=True, interval=80, repeat=False)
+        return fig, ax, anim
 
 
 # ===============================================================================================================================================
@@ -218,7 +522,7 @@ class eda():
         '''
         ar = array[np.logical_and(array >= start, array <= stop)]
         if ar.size > 0:
-            ar = ar[:] - ar[0]
+            ar = ar[:] - start
         return ar
 
 
@@ -288,7 +592,7 @@ class eda():
 
         """        
         # create fig, gird and axis ===============
-        if any(i==None for i in ax)or fig==None:
+        if any(i==None for i in ax) or fig==None:
             #create figure with shape
             fig = plt.figure(figsize=(6,5))
             # create gridspecs
@@ -405,7 +709,7 @@ class eda():
 
 
 
-
+# ===============================================================================================================================================
 
 
 
@@ -438,7 +742,7 @@ class loader():
     #  find all available sessions
     def get_available_session(self):
         subfolders = [ f.path for f in os.scandir(self.folder) if f.is_dir() ]
-        sessions = [folder_.split('/')[-1] for folder_ in subfolders]
+        sessions = [os.path.basename(folder_) for folder_ in subfolders]
         return subfolders, sessions
 
     # load session from given sesion folder
@@ -630,7 +934,7 @@ class loader():
                         'repetition number':rep_nrs,
                         'start time':interval_times[:,0],
                         'stim time':visual_times[:ntrials, :].flatten(),
-                        #'go cue':gocue_times,
+                        'go cue':gocue_times.flatten(),
                         'response time':response_times.flatten(),
                         'feedback time':feedback_times.flatten(),
                         'end time':interval_times[:,1],
@@ -658,7 +962,7 @@ class loader():
             session['trials_df'] = trials_df
 
         # write files if update or file does not exist
-        if update: #or any(files_exist):
+        if update or any(files_exist):
             #session['trials_df'].to_csv(os.path.join(folder, 'trials_df.csv') )
             session['trials_df'].to_pickle(os.path.join(folder, 'trials_df.pd'), compression='gzip' )    
             #session['spikes_df'].to_csv(os.path.join(folder, 'spikes_df.csv') )
