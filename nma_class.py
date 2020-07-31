@@ -37,96 +37,6 @@ class glm():
         pass
 
     # helper functions ===============================================================
-    def get_datamatrix(self, main_folder, all_session_folders, 
-                        all_session_names, areas_selected, window_correction, 
-                        subselect_area=False, window=2.5, event='stim time', to_pca=20):
-        # create X_glm data matrix
-        X_glm_all = None
-        # create x matrix for glm
-        y_glm_all = None
-
-        # impot loader clas
-        import loader
-        # initialize loader object
-        loader_obj = loader(main_folder)
-
-        import pca
-        pac = pca()
-
-        for folder, name in zip(all_session_folders, all_session_names):
-
-            # load session ================================================================
-            session = loader_obj.load_session(folder, fast=True, update=False)
-            
-            # select dataframes and clean up ===========
-            spikes_df = session['spikes_df']
-            clusters_df = session['clusters_df']
-            # drop bad clusters
-            clusters_df.drop(clusters_df[clusters_df['label']=='bad'].index, axis=0, inplace=True)
-            trials_df = session['trials_df']
-            # drop not included trials
-            trials_df.drop(trials_df[~trials_df['included']].index, axis=0, inplace=True)
-            trials_df.drop('included', axis=1, inplace=True)
-            # insert trial length
-            trials_df.insert(7, 'trial length', (trials_df['end time']-trials_df['start time']) )
-            
-
-            
-            # Principal Component Analysis==================================================
-            # all visual areas
-            if subselect_area:
-                neuron_selector = clusters_df['recording area'].isin(areas_selected)
-
-            else:
-                # all neurons
-                #neuron_selector = np.full(clusters_df.shape[0], True)
-                spikes = clusters_df[neuron_selector]['spikes']
-
-            if len(spikes) != 0:
-
-                # select only trials which have a visual stimulus
-                trials_selector = np.logical_or(trials_df['stim contrast left']!=0, trials_df['stim contrast right']!=0)
-                trials = trials_df[trials_selector]
-                # remove trials where stim is at both
-                sub_selector = ~np.logical_and(trials['stim contrast left']==1, trials['stim contrast right']==1)
-                trials= trials[sub_selector]
-
-                ev_bevore = trials[event]+window_correction
-
-                # get data matrix
-                # get all spikes event-windw< < event+window
-                X_pca = pca.get_data_matrix(ev_bevore, spikes, window)
-
-                # perform PCA
-                score, evectors, evals = pca.pca(X_pca)
-
-                # GLM =========================================================================
-                # prepare data for linear model
-                # visual stimulus side
-                # left = 0
-                # right = 1
-                y_glm = trials['stim contrast right'] #these are the binary choices the animal made on each trial (trialnr)
-                
-                # create data matrix
-                X_glm = score[:,:to_pca] #these are the principal components first 30 across all subselected trials (trialnr x pcs)
-
-                # add X_glm and y_glm to overall data matrix
-                # concatenate X_glm_all with X_glm
-                if X_glm_all is None:
-                    X_glm_all = X_glm
-                else:
-                    X_glm_all = np.append(X_glm_all, X_glm, axis=0)
-
-                # concatenate y_glm_all with y_glm
-                if y_glm_all is None:
-                    y_glm_all = y_glm
-                else:
-                    y_glm_all = np.append(y_glm_all, y_glm, axis=0)
-                
-            print(f"finished session{name}")
-        return X_glm_all, y_glm_all
-
-
     def sigmoid(self, z):
         return 1 / (1+np.exp(-z))
 
@@ -164,6 +74,31 @@ class glm():
 
         return accuracies_all
 
+    def get_data_matrix(self, trials_df, clusters_df, window):
+        """get data matrix of mean firing around event given neurons and trials [trials, ]
+
+        Args:
+            trials_df (dataframe column): pandas series with spike times for each neuron 
+            clusters_df (dataframe column): pandas series with event times for each trial
+            window (float): window to compute firing rate for event_time-window < firing rate < event_time+window
+
+        Returns:
+            [type]: [description]
+        """        
+        # initialize data matrix X
+        X = np.zeros([trials_df.shape[0], clusters_df.shape[0]])
+        # running index for column = neuron
+        X_j = 0
+        for row in clusters_df:
+            # running index for row = trial
+            X_i = 0
+            for trial in trials_df:
+                start = trial-window
+                stop = trial+window
+                X[X_i,X_j] = np.sum( np.logical_and(row >= start, row <= stop)  )
+                X_i += 1
+            X_j += 1
+        return X
    # ploting functions ==============================================================
     def plot_weights(self, models, sharey=True):
         """Draw a stem plot of weights for each model in models dict."""
@@ -232,9 +167,6 @@ class glm():
         ax.annotate("Total\n# Neurons", (C_values[0], n_voxels * .98), va="top")
         return ax
    
-
-
-
 
 # ===============================================================================================================================================
 
@@ -483,6 +415,34 @@ class pca():
         # animation
         anim = animation.FuncAnimation(fig, update,  len(xs), fargs=[xs, ys, graph], blit=True, interval=80, repeat=False)
         return fig, ax, anim
+
+
+    def plt_pca_3d(self, score, pc1, pc2, pc3, trials, ax, label=False, facecolor='r', edgecolor='r'):
+        # import 3d projection
+        from mpl_toolkits.mplot3d import Axes3D
+
+        # get data
+        xs = score[:,pc1]
+        ys = score[:,pc2]
+        zs = score[:,pc3]
+        # plot each trial
+        ax.scatter(xs, ys, zs, facecolors=facecolor, edgecolors=edgecolor)
+        # set axis labels
+        ax.set_xlabel(f"Principal component {pc1}")
+        ax.set_ylabel(f"Principal component {pc2}")
+        ax.set_zlabel(f"Principal component {pc3}")
+        ax.set_title("Trials for two principal components")
+        # add datapoints
+        if label:
+            # zip joins x and y coordinates and palebls in pairs
+            for x,y,z,label in zip(xs,ys,zs, trials):
+                # this method is called for each point
+                ax.text(x, y, z, 
+                        label, 
+                        size=5, 
+                        zorder=1, 
+                        color='k')
+        return ax
 
 
 # ===============================================================================================================================================
@@ -962,7 +922,7 @@ class loader():
             session['trials_df'] = trials_df
 
         # write files if update or file does not exist
-        if update or any(files_exist):
+        if update:# or any(files_exist):
             #session['trials_df'].to_csv(os.path.join(folder, 'trials_df.csv') )
             session['trials_df'].to_pickle(os.path.join(folder, 'trials_df.pd'), compression='gzip' )    
             #session['spikes_df'].to_csv(os.path.join(folder, 'spikes_df.csv') )
